@@ -4,6 +4,10 @@
 
 ### 更新内容
 
+**最新更新支持多网盘**
+
+**修复遗留问题**
+
 首先参考了 
 
 [emby挂载阿里盘转直链 | blog](https://blog.738888.xyz/2021/09/06/emby%E6%8C%82%E8%BD%BD%E9%98%BF%E9%87%8C%E7%9B%98%E8%BD%AC%E7%9B%B4%E9%93%BE/)
@@ -14,30 +18,37 @@
 
 - 增加userid（**jellyfin必须用到，不然api会报错**）
 - `fetchEmbyFilePath` 方法修改为`GET` 请求，`POST`请求会失败
-- `alist`挂载按照代码中的配置，必须为根目录，不然替换路径会有问题
+- ~~`alist`挂载按照代码中的配置，必须为根目录，不然替换路径会有问题~~
+- 修改多网盘挂载问题，实测支持多个网盘（alist必须按照下面的配置来）
 
 遗留问题：
 
-- 网页版本的`jellyfin`获取图片显示有问题，目前没有找到解决办法
-- 链接里面会自带一个`api_key`实测请求没问题，所以没有做替换，怀疑是`jellfin`内置的
+- ~~网页版本的`jellyfin`获取图片显示有问题，目前没有找到解决办法~~
+- ~~链接里面会自带一个`api_key`实测请求没问题，所以没有做替换，怀疑是`jellfin`内置的~~
 
 总体来说效果还是挺好，然后我自己是关闭了服务器转码，所以都是用客户端解码，暂时也不受图片问题的影响
 
-代码只修改了`emby.js` 里面需要修改的是`userid`，这个可以在你登录网页之后获取到。
+**代码需要修改**：
 
-**路径：**
+​	1.`emby.js` 里面需要修改的是`userid`，这个可以在你登录网页之后获取到。
 
-登录，点击用户图标，然后点击简介，地址栏就会有。参照：
+​	**路径：**
+
+​	登录，点击用户图标，然后点击简介，地址栏就会有。参照：
 
 ![userid](https://github.com/kikohz/jellyfin-link/raw/main/Screen%20Shot1.png)
 
-`embyMountPath` 按照注释填写即可
+​	2.`jellyfin API KEY` 在`jellfin`后台可以生成
 
-最后在此提醒 `alist`需要挂在根目录：
+
+
+**最后在此提醒 `alist`需要挂在根目录**(*按照图示来添加*)：
 
 ![alist](https://github.com/kikohz/jellyfin-link/raw/main/Screen%20Shot2.png)
 
 ### 最后安装步骤：
+
+*前提：已经安装好了`jellfin`，挂载好了网盘*
 
 1. 下载配置文件到VPS
 
@@ -61,13 +72,12 @@
    docker-compose logs -f
    ```
 
-4. 防火墙需要放行 5244, 8095，8095端口为`jellyfin`转直链端口与默认的8096互不影响
+4. 防火墙需要放行 5244(alist服务), 8095(转直链服务)，8095与默认的8096(jellfin)互不影响
 
 5. 访问alist后台来挂载网盘
 
-   访问5244端口,**初始密码**查看`docker log`能看到 ,根据项目文档 [https://github.com/Xhofe/alist](https://github.com/Xhofe/alist)
-    在Alist项目后台添加网盘
-
+   访问5244端口,**初始密码** 执行 `docker exec -it alist ./alist -password`查看 ,根据项目文档 [https://github.com/Xhofe/alist](https://github.com/Xhofe/alist)  在Alist项目后台添加网盘
+   
 6. 访问8095端口来测试直链是否生效，查看log
 
    ```jsx

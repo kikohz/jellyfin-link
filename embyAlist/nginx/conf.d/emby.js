@@ -2,13 +2,14 @@
 async function redirect2Pan(r) {
     //根据实际情况修改下面4个设置
     const embyHost = 'http://172.17.0.1:8096'; //这里默认emby/jellyfin的地址是宿主机,要注意iptables给容器放行端口
-    const embyMountPath = '/home/onedrive';  // rclone 的挂载目录, 例如将od, gd挂载到/mnt目录下:  /mnt/onedrive  /mnt/gd ,那么这里 就填写 /mnt
+    // rclone 的挂载目录, 例如将od, gd挂载到/mnt目录下:  /mnt/onedrive  /mnt/gd ,那么这里 就填写 /mnt//
+    // 这里直接会读取alist的挂载目录，所以不在填写本地的挂载目录
     const alistPwd = '';      //alist password
     const alistApiPath = 'http://172.17.0.1:5244/api/public/path'; //访问宿主机上5244端口的alist api, 要注意iptables给容 器放行端口
 
     //fetch mount emby/jellyfin file path
     const regex = /[A-Za-z0-9]+/g;
-    const itemId = r.uri.replace('emby', '').replace(/-/g, '').match(regex)[1]; 
+    const itemId = r.uri.replace('emby', '').replace(/-/g, '').match(regex)[1];
     const mediaSourceId = r.args.MediaSourceId;
     let api_key = r.args.api_key;
     // jellyfin 必须要用到userid，不然接口会报错，这里用固定的一个id只是用于获取剧集信息，不会影响用户其他信息
@@ -20,19 +21,20 @@ async function redirect2Pan(r) {
         r.warn(`api key for Infuse: ${api_key}`);
     }
     // r.warn(`r=: ${JSON.stringify(r)}`);
+    //请求jellyfin接口来获取item的信息
     const itemInfoUri = `${embyHost}/Items/${itemId}/PlaybackInfo?MediaSourceId=${mediaSourceId}&api_key=${api_key}&userId=${userId}`;
     r.warn(`itemInfoUri: ${itemInfoUri}`);
-    const embyRes = await fetchEmbyFilePath(itemInfoUri,r);
+    const embyRes = await fetchEmbyFilePath(itemInfoUri, r);
     if (embyRes.startsWith('error')) {
         r.error(embyRes);
         r.return(500, embyRes);
         return;
     }
     r.warn(`mount emby file path: ${embyRes}`);
-
     //fetch alist direct link
-    const alistFilePath = embyRes.replace(embyMountPath, '');
-    const alistRes = await fetchAlistPathApi(alistApiPath, alistFilePath, alistPwd,r);
+    const alistFilePath = embyRes;
+    //第一次尝试请求alist的api获取真实播放路径
+    const alistRes = await fetchAlistPathApi(alistApiPath, alistFilePath, alistPwd, r);
     if (!alistRes.startsWith('error')) {
         r.warn(`redirect to: ${alistRes}`);
         r.return(302, alistRes);
@@ -45,16 +47,20 @@ async function redirect2Pan(r) {
     }
     if (alistRes.startsWith('error404')) {
         const filePath = alistFilePath.substring(alistFilePath.indexOf('/', 1));
-        const foldersRes = await fetchAlistPathApi(alistApiPath, '/', alistPwd,r);
+        //获取alist跟目录，拿到我们挂载的所有网盘目录
+        const foldersRes = await fetchAlistPathApi(alistApiPath, '/', alistPwd, r);
         if (foldersRes.startsWith('error')) {
             r.error(foldersRes);
             r.return(500, foldersRes);
             return;
         }
+        //如果有多个网盘，会以数组的形式来返回多个跟目录，这里循环进行请求
         const folders = foldersRes.split(',').sort();
         for (let i = 0; i < folders.length; i++) {
             r.warn(`try to fetch alist path from /${folders[i]}${filePath}`);
-            const driverRes = await fetchAlistPathApi(alistApiPath, `/${folders[i]}${filePath}`, alistPwd,r);
+            //直接请求网盘跟目录下的路径来获取
+            // const driverRes = await fetchAlistPathApi(alistApiPath, `/${folders[i]}${filePath}`, alistPwd, r);
+            const driverRes = await fetchAlistPathApi(alistApiPath, `${filePath}`, alistPwd, r);
             if (!driverRes.startsWith('error')) {
                 r.warn(`redirect to: ${driverRes}`);
                 r.return(302, driverRes);
@@ -70,7 +76,7 @@ async function redirect2Pan(r) {
     return;
 }
 
-async function fetchAlistPathApi(alistApiPath, alistFilePath, alistPwd,r) {
+async function fetchAlistPathApi(alistApiPath, alistFilePath, alistPwd, r) {
     const alistRequestBody = {
         "path": alistFilePath,
         "password": alistPwd
@@ -119,7 +125,7 @@ async function fetchAlistPathApi(alistApiPath, alistFilePath, alistPwd,r) {
     }
 }
 
-async function fetchEmbyFilePath(itemInfoUri,r) {
+async function fetchEmbyFilePath(itemInfoUri, r) {
     try {
         const res = await ngx.fetch(itemInfoUri, {
             method: 'GET',
@@ -134,7 +140,7 @@ async function fetchEmbyFilePath(itemInfoUri,r) {
                 return `error: emby_api itemInfoUri response is null`;
             }
             r.warn(`result: ${result.MediaSources[0].Path}`);
-	        return result.MediaSources[0].Path;
+            return result.MediaSources[0].Path;
         }
         else {
             return (`error: emby_api ${res.status} ${res.statusText}`);
